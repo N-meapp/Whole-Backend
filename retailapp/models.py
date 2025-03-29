@@ -23,6 +23,10 @@ class Customer(models.Model):
     status = models.BooleanField(default=False)
     address = models.JSONField(default=dict,blank=True)
 
+    @property
+    def is_authenticated(self):
+        return True
+
     def save(self, *args, **kwargs):
         # Hash the password before saving
         if not self.password.startswith('pbkdf2_sha256$'):
@@ -82,7 +86,10 @@ class Product_Category(models.Model):
     category_name = models.CharField(max_length=20)
     image =  CloudinaryField('image', folder="product_category/",blank=True, null=True) 
 
-
+    @property
+    def is_authenticated(self):
+        return True
+    
     def __str__(self):
         return self.category_name
     
@@ -96,6 +103,10 @@ class Product_list(models.Model):
     prize_range = models.JSONField(default=list)
     product_stock = models.CharField(max_length=250)
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+
+    @property
+    def is_authenticated(self):
+        return True
 
     def add_prize_range(self, prize):
         if not isinstance(prize, dict):
@@ -113,6 +124,10 @@ class Product_list(models.Model):
 class Cart_items(models.Model):
     user_id = models.CharField(max_length=10)
     products = models.JSONField(default=list)
+
+    @property
+    def is_authenticated(self):
+        return True
     
     def cart_add(self, products):
         if not isinstance(products, list):  # Ensure it's a list of dicts
@@ -133,6 +148,10 @@ class Order_products(models.Model):
     user_id = models.CharField(max_length=20)
     product_items = models.JSONField(default=dict)
 
+    @property
+    def is_authenticated(self):
+        return True
+
     def __str__(self):
         return self.user_id
 
@@ -142,8 +161,16 @@ class Enquiry(models.Model):
     product_id = models.CharField(max_length=10)
     message = models.TextField()
 
+    @property
+    def is_authenticated(self):
+        return True
+
 
 class Slider_Add(models.Model):
     slider_image = CloudinaryField('image', folder="slider_images/")
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+
+    @property
+    def is_authenticated(self):
+        return True
 

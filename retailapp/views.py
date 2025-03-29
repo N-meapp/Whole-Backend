@@ -26,8 +26,28 @@ import random
 from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 from rest_framework_simplejwt.exceptions import TokenError
+import logging
 
 SECRET_KEY = "django-insecure-+k#qrwj!@v*ls7(*xs%8!0wfip@6g^e!v!rn&d5y5d7tuj4vm(" 
+
+class Register_admin(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        username = request.data.get("username")
+        password = request.data.get("password")
+
+        if not username or not password:
+            return Response({"error": "Username and password are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if Administrator.objects.filter(username=username).exists():
+            return Response({"error": "Username already taken"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Create new customer with hashed password
+        Admin = Administrator(username=username, password=make_password(password))
+        Admin.save()
+
+        return Response({"message": "User registered successfully"}, status=status.HTTP_201_CREATED)
 
 
 class Register_custumer(APIView):
@@ -63,54 +83,6 @@ class Register_custumer(APIView):
         customer.save()
 
         return Response({"message": "User registered successfully"}, status=status.HTTP_201_CREATED)
-
-
-# class UserLoginView(APIView):
-#     permission_classes = [AllowAny]
-
-#     def post(self, request):
-#         username = request.data.get("username")
-#         password = request.data.get("password")
-
-#         user = None
-#         user_type = None
-
-#         # Check Customer model
-#         try:
-#             user = Customer.objects.get(username=username)
-#             user_type = "customer"
-#         except Customer.DoesNotExist:
-#             pass
-
-#         # Check Administrator model if user is still None
-#         if user is None:
-#             try:
-#                 user = Administrator.objects.get(username=username)
-#                 user_type = "admin"
-#             except Administrator.DoesNotExist:
-#                 return Response({"error": "Invalid username or password"}, status=status.HTTP_401_UNAUTHORIZED)
-
-#         # Check password
-#         if not check_password(password, user.password):
-#             return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
-
-#         # Generate JWT tokens
-#         refresh = RefreshToken.for_user(user)  # Proper way to create tokens
-
-#         profile_image_url = None
-#         if hasattr(user, "profile_image") and user.profile_image:
-#             profile_image_url = user.profile_image.url
-
-#         return Response({
-#             "message": "Login successful",
-#             "access_token": str(refresh.access_token),
-#             "refresh_token": str(refresh),
-#             "user_id": user.id,
-#             "username": user.username,
-#             "user_type": user_type,
-#             "profile_img": profile_image_url
-#         }, status=status.HTTP_200_OK)
-    
 
 
 class UserLoginView(APIView):
@@ -167,10 +139,11 @@ def get_tokens_for_user(user):
 
 
 # class RefreshTokenView(APIView):
-#     permission_classes = []  # No authentication required for refreshing tokens
+#     permission_classes = []  # No authentication required
 
 #     def post(self, request):
 #         refresh_token = request.data.get("refresh_token")
+#         print("the refresh token",refresh_token)
 
 #         if not refresh_token:
 #             return Response({"error": "Refresh token is required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -178,16 +151,18 @@ def get_tokens_for_user(user):
 #         try:
 #             refresh = RefreshToken(refresh_token)  # Validate refresh token
 
-#             # Extract user info from token payload
 #             user_id = refresh["user_id"]
 #             username = refresh["username"]
 #             user_type = refresh["user_type"]
 
-#             # Generate new access token
-#             access_token = str(refresh.access_token)
+
+#             # Generate new access and refresh tokens
+#             new_access_token = str(refresh.access_token)
+#             new_refresh_token = str(refresh)  # Issue new refresh token
 
 #             return Response({
-#                 "access_token": access_token,
+#                 "access_token": new_access_token,
+#                 "refresh_token": new_refresh_token,  # Send new refresh token
 #                 "user_id": user_id,
 #                 "username": username,
 #                 "user_type": user_type,
@@ -196,38 +171,64 @@ def get_tokens_for_user(user):
 #         except TokenError:
 #             return Response({"error": "Invalid or expired refresh token"}, status=status.HTTP_401_UNAUTHORIZED)
 
+logger = logging.getLogger(__name__)
 
 class RefreshTokenView(APIView):
-    permission_classes = []  # No authentication required
+    permission_classes = [AllowAny]
 
     def post(self, request):
-        refresh_token = request.data.get("refresh_token")
+        logger.debug(f"Received request data: {request.data}")  # Debug log
+        refresh_token = request.data.get("refresh")
+        print("the requested token is",request.data)
 
         if not refresh_token:
-            return Response({"error": "Refresh token is required"}, status=status.HTTP_400_BAD_REQUEST)
+            logger.error("No refresh token found in the request body.")
+            return Response({"error": "Refresh token is required."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            refresh = RefreshToken(refresh_token)  # Validate refresh token
+            # Validate the refresh token
+            refresh = RefreshToken(refresh_token)
+            
+            # Log the decoded refresh token for debugging
+            logger.debug(f"Decoded Refresh Token: {refresh}")
 
+            # Get the user ID and user type from the payload (the refresh token contains it)
             user_id = refresh["user_id"]
-            username = refresh["username"]
             user_type = refresh["user_type"]
+            
+            # Log user info
+            logger.debug(f"User ID: {user_id}, User Type: {user_type}")
 
+            # Fetch the user based on user type (Customer or Administrator)
+            if user_type == "customer":
+                user = Customer.objects.get(id=user_id)
+            elif user_type == "admin":
+                user = Administrator.objects.get(id=user_id)
+            else:
+                return Response({"error": "Invalid user type in token."}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Generate new access and refresh tokens
-            new_access_token = str(refresh.access_token)
-            new_refresh_token = str(refresh)  # Issue new refresh token
+            # Generate new tokens for the user
+            tokens = get_tokens_for_user(user)
 
             return Response({
-                "access_token": new_access_token,
-                "refresh_token": new_refresh_token,  # Send new refresh token
-                "user_id": user_id,
-                "username": username,
+                "message": "Tokens refreshed successfully",
+                "access_token": tokens["access"],
+                "refresh_token": tokens["refresh"],
+                "user_id": user.id,
+                "username": user.username,
                 "user_type": user_type,
             }, status=status.HTTP_200_OK)
 
         except TokenError:
-            return Response({"error": "Invalid or expired refresh token"}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response({"error": "Invalid refresh token."}, status=status.HTTP_400_BAD_REQUEST)
+
+        except Customer.DoesNotExist:
+            logger.error(f"Customer with ID {user_id} not found.")
+            return Response({"error": "Customer not found."}, status=status.HTTP_404_NOT_FOUND)
+        
+        except Administrator.DoesNotExist:
+            logger.error(f"Administrator with ID {user_id} not found.")
+            return Response({"error": "Administrator not found."}, status=status.HTTP_404_NOT_FOUND)
 
 
 
@@ -2141,7 +2142,7 @@ class Top_products(APIView):
 
 
 
-class slider_Adds(APIView):  # Follow Python naming conventions (CamelCase -> PascalCase)
+class slider_Adds(APIView): 
     permission_classes = [IsAuthenticated]
     
     def post(self, request):

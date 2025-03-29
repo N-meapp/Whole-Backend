@@ -10,6 +10,7 @@ urlpatterns = [
     path('api/ProduclistView/', ProduclistView.as_view(), name='ProduclistView'),
     path('api/ProduclistViewlimit/', ProduclistViewlimit.as_view(), name='ProduclistViewlimit'),
     path('api/Register/', Register_custumer.as_view(), name='Register'),
+    path('api/Register_admin/', Register_admin.as_view(), name='Register_admin'),
     path('api/Login/', UserLoginView.as_view(), name='Login'),
     path('api/token/refresh/', RefreshTokenView.as_view(), name='token_refresh'),
     # path('api/logout/', UserLogoutView.as_view(), name='logout'),
