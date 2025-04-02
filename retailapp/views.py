@@ -51,7 +51,7 @@ class Register_admin(APIView):
 
 
 class Register_custumer(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         customers = Customer.objects.all()
@@ -138,39 +138,6 @@ def get_tokens_for_user(user):
     }
 
 
-# class RefreshTokenView(APIView):
-#     permission_classes = []  # No authentication required
-
-#     def post(self, request):
-#         refresh_token = request.data.get("refresh_token")
-#         print("the refresh token",refresh_token)
-
-#         if not refresh_token:
-#             return Response({"error": "Refresh token is required"}, status=status.HTTP_400_BAD_REQUEST)
-
-#         try:
-#             refresh = RefreshToken(refresh_token)  # Validate refresh token
-
-#             user_id = refresh["user_id"]
-#             username = refresh["username"]
-#             user_type = refresh["user_type"]
-
-
-#             # Generate new access and refresh tokens
-#             new_access_token = str(refresh.access_token)
-#             new_refresh_token = str(refresh)  # Issue new refresh token
-
-#             return Response({
-#                 "access_token": new_access_token,
-#                 "refresh_token": new_refresh_token,  # Send new refresh token
-#                 "user_id": user_id,
-#                 "username": username,
-#                 "user_type": user_type,
-#             }, status=status.HTTP_200_OK)
-
-#         except TokenError:
-#             return Response({"error": "Invalid or expired refresh token"}, status=status.HTTP_401_UNAUTHORIZED)
-
 logger = logging.getLogger(__name__)
 
 class RefreshTokenView(APIView):
@@ -233,7 +200,7 @@ class RefreshTokenView(APIView):
 
 
 class ProductCategoryView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request,id=None):
         categories = Product_Category.objects.all()
@@ -259,7 +226,7 @@ class ProductCategoryView(APIView):
 
     
 class Product_categoryUpdate(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
     def patch(self, request, id):
         image = request.FILES.get("image")
 
@@ -305,7 +272,7 @@ class Product_categoryUpdate(APIView):
 
 
 class ProductListPost(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         products = Product_list.objects.all()
@@ -400,7 +367,7 @@ class ProductListPost(APIView):
 
 
 class ProduclistView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
             response_data = []
@@ -446,7 +413,7 @@ class ProduclistView(APIView):
     
 
 class ProduclistViewlimit(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
             response_data = []
@@ -494,7 +461,7 @@ class ProduclistViewlimit(APIView):
 
 
 class Product_updateanddelete(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self,request,id):
         try:
@@ -629,7 +596,7 @@ class Product_updateanddelete(APIView):
                
 
 class ProductAddExtraImage(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def patch(self, request, id):
         new_images = request.FILES.get("new_product_images")  # Get multiple uploaded files
@@ -735,7 +702,7 @@ class ProductAddExtraImage(APIView):
 # storing the search history
 
 class Search_history(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         # Check if the user is logged in
@@ -803,7 +770,7 @@ class Search_history(APIView):
 
 # view for new arrivals
 class Newly_arrived(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         # Fetch the 5 most recently added products
@@ -816,7 +783,6 @@ class Newly_arrived(APIView):
 
 
 class Home(APIView):
-    authentication_classes = [JWTAuthentication]
     permission_classes = [AllowAny]
 
     def get(self, request):
@@ -826,7 +792,7 @@ class Home(APIView):
 
 # profile update
 class Profile_update_custumer(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, id):
         try:
@@ -903,7 +869,7 @@ class Profile_update_custumer(APIView):
 
 # category filtering homescreen
 class Category_filter(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
             category = request.data.get('category_name')
@@ -919,7 +885,7 @@ class Category_filter(APIView):
                 return Response({"error": "Category not found"}, status=status.HTTP_404_NOT_FOUND)
 
 class Adding_cart(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         user_id = request.data.get('user_id')
@@ -1067,7 +1033,7 @@ class Adding_cart(APIView):
 
 
 class Count_order_update(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def patch(self, request):
         count = request.data.get('count')
@@ -1112,7 +1078,7 @@ class Count_order_update(APIView):
 
 
 class Delete_all_cart(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def post(self,request):
         user = request.data.get('username')
@@ -1165,7 +1131,7 @@ class Delete_all_cart(APIView):
 
 
 class order_products(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         user_id = request.data.get('userid')
@@ -1296,7 +1262,7 @@ class order_products(APIView):
 
 
 class UpdateOrderStatus(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def patch(self, request):
         order_reject = request.data.get("rejected_products", [])  # List of rejected product IDs
@@ -1366,7 +1332,7 @@ class UpdateOrderStatus(APIView):
         return Response({"message": "No updates were made"}, status=status.HTTP_400_BAD_REQUEST)
 
 class Update_tracking(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def patch(self, request, id):
         order_loc = request.data.get('order_track')  # New tracking status
@@ -1401,7 +1367,7 @@ class Update_tracking(APIView):
 
 
 class CancelOrder(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         username = request.data.get("user_id")
@@ -1532,7 +1498,7 @@ class CancelOrder(APIView):
 
 
 class Stock_auto_update(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         order_list = Order_products.objects.all()
@@ -1808,7 +1774,7 @@ class Search_all_products(APIView):
 
 
 class SearchAllCustomer(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         search_term = request.data.get("search_term", "").strip()
@@ -1855,7 +1821,7 @@ class SearchAllCustomer(APIView):
 
 
 class SearchOrders(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     # def post(self, request):
     #     search_term = request.data.get("search_term", "").strip().lower()
@@ -2037,7 +2003,7 @@ class SearchOrders(APIView):
 
     
 class Enquiry_send(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         serializer = EnquirySerializer(data=request.data)
@@ -2084,7 +2050,7 @@ class Enquiry_send(APIView):
 
 class Top_products(APIView):
 
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         orders_list = Order_products.objects.all()
