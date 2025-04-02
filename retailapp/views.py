@@ -84,6 +84,29 @@ class Register_custumer(APIView):
 
         return Response({"message": "User registered successfully"}, status=status.HTTP_201_CREATED)
 
+class UpdateRegister(APIView):
+    permission_classes = [AllowAny]
+
+    def patch(self, request, id):
+        username = request.data.get("username")
+        password = request.data.get("password")
+        discount = request.data.get("discount_individual")
+
+        try:
+            customer = Customer.objects.get(id=id)
+        except Customer.DoesNotExist:
+            return Response({'error': 'The customer with this ID was not found'}, status=404)
+
+        if username:
+            customer.username = username
+        if password:
+            customer.set_password(password)  # Securely update the password
+        if discount is not None:
+            customer.discount_individual = discount
+
+        customer.save()
+        return Response({'message': 'The customer has been updated successfully'}, status=200)
+        
 
 class UserLoginView(APIView):
     permission_classes = []  # No authentication required for login

@@ -96,7 +96,7 @@ class Product_Category(models.Model):
 class Product_list(models.Model):
     product_name = models.CharField(max_length=50)
     product_images = models.JSONField(default=list) # Stores array of strings (URLs or image paths)
-    product_description = models.CharField(max_length=500)
+    product_description = models.TextField()
     product_discount = models.CharField(max_length=20,blank=True)
     product_offer = models.CharField(max_length=20,blank=True)
     product_category = models.CharField(max_length=50)

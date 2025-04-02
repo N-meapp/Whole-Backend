@@ -19,6 +19,7 @@ urlpatterns = [
     # path('Add_cart/', Add_cart.as_view(), name='Add_cart'),
     path('api/Newly_arrived/', Newly_arrived.as_view(), name='Newly_arrived'),
     path('api/Profile_update_custumer/<int:id>/', Profile_update_custumer.as_view(), name='Profile_update_custumer'),
+    path('api/UpdateRegister/<int:id>/', UpdateRegister.as_view(), name='UpdateRegister'),
     path('api/Category_filter/', Category_filter.as_view(), name='Category_filter'),
     path('api/Product_updateanddelete/<int:id>/', Product_updateanddelete.as_view(), name='Product_updateanddelete'),
     path('api/ProductAddExtraImage/<int:id>/', ProductAddExtraImage.as_view(), name='ProductAddExtraImage'),
