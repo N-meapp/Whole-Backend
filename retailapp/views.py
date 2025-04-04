@@ -21,6 +21,7 @@ import datetime
 from django.contrib.auth.hashers import check_password
 import base64
 from cloudinary.uploader import upload
+import cloudinary.uploader
 from cloudinary.exceptions import Error
 import random
 from rest_framework_simplejwt.views import TokenRefreshView
@@ -85,7 +86,7 @@ class Register_custumer(APIView):
         return Response({"message": "User registered successfully"}, status=status.HTTP_201_CREATED)
 
 class UpdateRegister(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def patch(self, request, id):
         username = request.data.get("username")
@@ -261,6 +262,14 @@ class Product_categoryUpdate(APIView):
 
         # Upload new image if provided
         cloudinary_url = None
+
+        if image and category.image:
+            try:
+                cloudinary.uploader.destroy(category.image.public_id)  # Delete old image
+            except Exception as e:
+                return Response({"error": f"Failed to delete old image from Cloudinary: {str(e)}"}, status=500)
+
+
         if image:
             try:
                 cloudinary_response = cloudinary.uploader.upload(image)
@@ -282,13 +291,23 @@ class Product_categoryUpdate(APIView):
             return Response(serializer.errors, status=400)
 
         
-    def delete(self,request,id):
+    def delete(self, request, id):
         try:
-            category_name = Product_Category.objects.get(id=id)
+            category = Product_Category.objects.get(id=id)
         except Product_Category.DoesNotExist:
-            return Response({"message: no Product_Category found"})
-        category_name.delete()
-        return Response({"message": "Product deleted"}, status=200)
+            return Response({"message": "No Product_Category found"}, status=404)
+
+        # Delete the image from Cloudinary if it exists
+        if category.image:
+            try:
+                cloudinary.uploader.destroy(category.image.public_id)  # Delete from Cloudinary
+            except Exception as e:
+                return Response({"error": f"Failed to delete image from Cloudinary: {str(e)}"}, status=500)
+
+        # Delete the category from database
+        category.delete()
+
+        return Response({"message": "Product category deleted successfully"}, status=200)
 
 
 
@@ -332,7 +351,7 @@ class ProductListPost(APIView):
         try:
             for image in image_list[:5]:  # Limit to 5 images
                 upload_result = cloudinary.uploader.upload(image)
-                image_urls.append(upload_result["secure_url"])  # Store Cloudinary URL
+                image_urls.append(upload_result["public_id"])  # Store Cloudinary URL
 
         except Exception as e:
             return Response({"error": f"Image upload failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -498,6 +517,10 @@ class Product_updateanddelete(APIView):
 
     def patch(self, request, id):
         item = get_object_or_404(Product_list, id=id)
+        new_images = request.FILES.getlist("new_product_images")  # Use getlist to get multiple files
+        existing_images_update = request.data.get('existing_images_update', [])
+        print("the new_images is",new_images)
+
 
         # Extract fields from request
         # item_no = request.data.get("item_number")
@@ -546,34 +569,73 @@ class Product_updateanddelete(APIView):
 
         # Save updated prize_range
         item.prize_range = existing_prize_range
-        item.save()
+        # item.save()
 
         # Update image if provided
-        # if new_image is not None and item_no is not None:
-        #     try:
-        #         item_no = int(item_no)
-        #         if item_no < 0 or item_no >= len(item.product_images):
-        #             return Response({"error": "item_no out of range"}, status=400)
+        if not isinstance(item.product_images, list):
+            item.product_images = []  # Ensure it's a list
+        
+        try:
+            existing_images_update = json.loads(existing_images_update) if isinstance(existing_images_update, str) else existing_images_update
+            if not isinstance(existing_images_update, list):
+                existing_images_update = []
+        except Exception:
+            existing_images_update = []
 
-        #         cloudinary_response = cloudinary.uploader.upload(new_image)
-        #         cloudinary_url = cloudinary_response.get("secure_url")
+        # STEP 1: Find deleted images
+        previous_images = set(item.product_images)
+        updated_images_set = set(existing_images_update)
+        deleted_images = previous_images - updated_images_set
 
-        #         if not cloudinary_url:
-        #             return Response({"error": "Failed to upload image to Cloudinary"}, status=500)
+        # STEP 2: Delete removed images from Cloudinary
+        for public_id in deleted_images:
+            try:
+                cloudinary.uploader.destroy(public_id)
+            except Exception as e:
+                print(f"Cloudinary delete failed for {public_id}: {str(e)}")
 
-        #         # Replace image at the given index
-        #         item.product_images[item_no] = cloudinary_url
+        uploaded_images = []
+        existing_images_update = list(existing_images_update)
+        for image in new_images:
+            print("the single image is",image)
+            try:
+                cloudinary_response = cloudinary.uploader.upload(image)
+                public_id = cloudinary_response.get("public_id")
 
-        #     except (ValueError, TypeError):
-        #         return Response({"error": "item_no must be an integer"}, status=400)
-        #     except Exception as e:
-        #         return Response({"error": f"Cloudinary upload failed: {str(e)}"}, status=500)
+                if not public_id:
+                    return Response({"error": "Failed to upload image to Cloudinary"}, status=500)
+
+                uploaded_images.append(public_id)  # Store new Cloudinary URLs
+
+            except Exception as e:
+                return Response({"error": f"Cloudinary upload failed: {str(e)}"}, status=500)
+
+        # Combine existing images with new images
+        
+        updated_images = existing_images_update + uploaded_images
+
+        print("the updated_images is",updated_images)
+
+        # Keep only the first 5 images (remove extras)
+        if len(updated_images) > 5:
+            removed_images = updated_images[5:]  # Get images that are removed
+            updated_images = updated_images[:5]  # Keep only first 5
+
+            item.product_images = updated_images
+            item.save()
+
+            return Response({
+                'message': f'Images added successfully, but {len(removed_images)} extra images were discarded.',
+                'final_images': updated_images,
+                'removed_images': removed_images
+            }, status=status.HTTP_200_OK)
+        item.product_images = updated_images
+        item.save()
 
         # Dynamically update other fields in the request
-        mutable_data = request.data.copy()
-        # mutable_data.pop("item_number", None)
-        # mutable_data.pop("new_image", None)
+        mutable_data = request.data.dict()
         mutable_data.pop("prize_range", None)
+
 
         serializer = ProductListSerializer(item, data=mutable_data, partial=True)
 
@@ -589,13 +651,22 @@ class Product_updateanddelete(APIView):
             product = Product_list.objects.get(id=id)
         except Product_list.DoesNotExist:
             return Response({'error':'the product not found'},status=400)
+        
+        if product.product_images:
+            try:
+                for url in product.product_images:
+                    public_id = url.split("/")[-1].split(".")[0]  # crude but works
+                    cloudinary.uploader.destroy(public_id)
+            except Exception as e:
+                return Response({"error": f"Failed to delete image: {str(e)}"}, status=500)
+        
         if product:
             product.delete()
             return Response({'message':'the product deleted '},status=200)
 
     def post(self, request, id):
         index = request.data.get('id')
-
+        
         try:
             product = Product_list.objects.get(id=id)
         except Product_list.DoesNotExist:
@@ -612,7 +683,9 @@ class Product_updateanddelete(APIView):
 
         # Update the product with the new prize_range
         product.prize_range = updated_prize_range
+
         product.save()
+        
         return Response({'message': 'Prize entry deleted successfully', 'updated_prize_range': product.data}, status=200)
 
 
@@ -699,26 +772,26 @@ class ProductAddExtraImage(APIView):
     #     except Exception as e:
     #         return Response({"error": "no product found"}, status=500)
 
-    def post(self, request, id):
-        existing_images_update = request.data.get('existing_images_update', [])
+    # def post(self, request, id):
+    #     existing_images_update = request.data.get('existing_images_update', [])
 
-        if not isinstance(existing_images_update, list):
-            return Response({'error': 'The existing_images_update must be a list'}, status=400)
+    #     if not isinstance(existing_images_update, list):
+    #         return Response({'error': 'The existing_images_update must be a list'}, status=400)
 
-        # Fetch the product
-        product = get_object_or_404(Product_list, id=id)
+    #     # Fetch the product
+    #     product = get_object_or_404(Product_list, id=id)
 
-        # Ensure product_images is a list
-        if not isinstance(product.product_images, list):
-            return Response({'error': 'product_images field is not a list'}, status=400)
+    #     # Ensure product_images is a list
+    #     if not isinstance(product.product_images, list):
+    #         return Response({'error': 'product_images field is not a list'}, status=400)
 
-        # Update the images
-        product.product_images = existing_images_update
+    #     # Update the images
+    #     product.product_images = existing_images_update
 
-        # Save the product
-        product.save()
+    #     # Save the product
+    #     product.save()
 
-        return Response({'message': 'Product images updated successfully'}, status=200)
+    #     return Response({'message': 'Product images updated successfully'}, status=200)
 
 
 
@@ -857,7 +930,12 @@ class Profile_update_custumer(APIView):
             # Save the updated address
             customer.address = existing_address
             customer.save()
-
+        if new_image and customer.profile_image:
+            try:
+                cloudinary.uploader.destroy(customer.profile_image.public_id)
+            except Exception as e:
+                return Response({"error": f"Failed to delete old image from Cloudinary: {str(e)}"}, status=500)
+            
         if new_image:
             try:
                 # Upload image to Cloudinary
@@ -1575,7 +1653,7 @@ class Total_counts_dashboard(APIView):
 
 
 class Update_customer_status(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def patch(self, request, id):
         # Extract status from request data
@@ -1760,7 +1838,7 @@ class TotalOrdersList(APIView):
             
 
 class Search_all_products(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         search_term = request.data.get("search_term", "").strip()
@@ -2192,6 +2270,11 @@ class slider_Adds(APIView):
     
     def delete(self,request,id):
         slider_item = get_object_or_404(Slider_Add, id=id)
+        if slider_item.slider_image:
+            try:
+                cloudinary.uploader.destroy(slider_item.slider_image.public_id)
+            except Exception as e:
+                return Response({"error": f"Failed to delete old image from Cloudinary: {str(e)}"}, status=500)
         if slider_item:
             slider_item.delete()
             return Response({"message":"the item deleted succefully"},status=200)
