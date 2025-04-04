@@ -351,7 +351,7 @@ class ProductListPost(APIView):
         try:
             for image in image_list[:5]:  # Limit to 5 images
                 upload_result = cloudinary.uploader.upload(image)
-                image_urls.append(upload_result["public_id"])  # Store Cloudinary URL
+                image_urls.append(upload_result["secure_url"])  # Store Cloudinary URL
 
         except Exception as e:
             return Response({"error": f"Image upload failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -588,11 +588,17 @@ class Product_updateanddelete(APIView):
         deleted_images = previous_images - updated_images_set
 
         # STEP 2: Delete removed images from Cloudinary
-        for public_id in deleted_images:
+        for public in deleted_images:
             try:
+                # Split the URL and get the last part
+                public_id_with_ext = public.split('/')[-1]
+                public_id = public_id_with_ext.rsplit('.', 1)[0]  # Remove file extension
+
+                # Delete from Cloudinary
                 cloudinary.uploader.destroy(public_id)
+                print(f"Deleted: {public_id}")
             except Exception as e:
-                print(f"Cloudinary delete failed for {public_id}: {str(e)}")
+                print(f"Failed to delete image from Cloudinary: {e}")
 
         uploaded_images = []
         existing_images_update = list(existing_images_update)
@@ -600,12 +606,7 @@ class Product_updateanddelete(APIView):
             print("the single image is",image)
             try:
                 cloudinary_response = cloudinary.uploader.upload(image)
-                public_id = cloudinary_response.get("public_id")
-
-                if not public_id:
-                    return Response({"error": "Failed to upload image to Cloudinary"}, status=500)
-
-                uploaded_images.append(public_id)  # Store new Cloudinary URLs
+                uploaded_images.append(cloudinary_response["secure_url"])  # Store new Cloudinary URLs
 
             except Exception as e:
                 return Response({"error": f"Cloudinary upload failed: {str(e)}"}, status=500)
