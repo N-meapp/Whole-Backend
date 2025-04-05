@@ -987,7 +987,7 @@ class Category_filter(APIView):
                 return Response({"error": "Category not found"}, status=status.HTTP_404_NOT_FOUND)
 
 class Adding_cart(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def post(self, request):
         user_id = request.data.get('user_id')
@@ -999,13 +999,22 @@ class Adding_cart(APIView):
         # Validate data
         if user_id is None:
             return Response({"error": "Invalid data format (user_id missing or products is not a list)"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if isinstance(products, dict):
+            products = [products]
+        elif not isinstance(products, list):
+            return Response({"error": "products must be a list or a product object"}, status=status.HTTP_400_BAD_REQUEST)
 
         # Retrieve the user's cart
-        cart = Cart_items.objects.filter(user_id=user_id).first()
-
+        cart = Cart_items.objects.get(user_id=user_id)
+        if not isinstance(cart.products, list):
+            cart.products = list(cart.products)
+        print("the cart items is",cart)
+        print("Type of cart.products:",cart.products)
         if cart:
             # Update the existing cart
             existing_products = {item["id"]: item for item in cart.products}  # Create a dictionary for quick lookup
+            print('the existing_products',existing_products)
 
             for new_product in products:
                 product_id = new_product.get("id")
@@ -1024,108 +1033,113 @@ class Adding_cart(APIView):
             cart.save()
         else:
             # If no cart exists, create a new one and ensure count is stored as an integer
-            for product in products:
-                product["count"] = int(product.get("count", 1))
+            # for product in products:
+                # product["count"] = int(product.get("count", 1))
             cart = Cart_items.objects.create(user_id=user_id, products=products)
 
         # Serialize and return response
         serializer = CartSerializer(cart)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
-                
+    
 
     def get(self, request):
         user = request.query_params.get('userid')
         print('Current author is:', user)
+        try:
+            user_cart_items = Cart_items.objects.filter(user_id=user).first()
+            print('User cart items:', user_cart_items)
 
-        user_cart_items = Cart_items.objects.filter(user_id=user)
-        print('User cart items:', user_cart_items)
-
-        if not user_cart_items.exists():
+        except Cart_items.DoesNotExist:
             return Response({"error": "No matching cart items found"}, status=404)
 
         cart_data = []
 
-        for item in user_cart_items:
-            print("Processing Cart Item:", item)
-            print("Item Products Data:", item.products)
+        # for item in user_cart_items:
+        #     print("Processing Cart Item:", item)
+            # print("Item Products Data:", item.products)
 
-            for product in item.products:  
-                p_id = product.get("id")
-                product_count = int(product.get('count', 0))  
-                print("Extracted Product ID:", p_id, "Product Count:", product_count)
+        for product in user_cart_items.products:  
+            print('the product iterator is',product)
+            p_id = product["id"]
+            print('the p_id is',p_id)
 
-                if not p_id:
-                    continue  
+            product_count = int(product.get('count', 0))  
+            print("Extracted Product ID:", p_id, "Product Count:", product_count)
 
-                # Fetch product details
-                product_obj = Product_list.objects.filter(id=p_id).first()
-                print("Fetched Product Object:", product_obj)
+            if not p_id:
+                continue  
 
-                if product_obj is None:
-                    continue
+            # Fetch product details
+            product_obj = Product_list.objects.filter(id=p_id).first()
+            print("Fetched Product Object:", product_obj)
 
-                # Get customer details and individual discount
-                invidual = Customer.objects.filter(id=user).first()
-                individual_discount = float(invidual.discount_individual) / 100 if invidual and invidual.discount_individual else 0
+            if product_obj is None:
+                continue
 
-                print("Individual Discount:", individual_discount)
+            # Get customer details and individual discount
+            invidual = Customer.objects.filter(id=user).first()
+            # discount_individual = int(invidual.discount_individual)
+            individual_discount = float(invidual.discount_individual.strip().replace("%", "")) / 100 if invidual and invidual.discount_individual else 0
 
-                # Get product discount
-                product_discount = float(product_obj.product_discount) / 100 if product_obj and product_obj.product_discount else 0
-                print("Product Discount:", product_discount)
+            print("Individual Discount:", individual_discount)
 
-                # Calculate total amount
-                total_amount = 0
-                if product_obj and product_obj.prize_range:
-                    for prize in product_obj.prize_range:
-                        start = int(prize.get('from', 0) or 0)
-                        end = int(prize.get('to', 0) or 0)
-                        price = float(prize.get('prize', 0) or 0)
+            # Get product discount
+            # product_discount = int(product_obj.product_discount)
+            product_discount = float(product_obj.product_discount.strip().replace("%", "")) / 100 if product_obj and product_obj.product_discount else 0
+            print("Product Discount:", product_discount)
 
-                        print(f"Checking range: from {start} to {end}, prize: {price}")
+            # Calculate total amount
+            total_amount = 0
+            if product_obj and product_obj.prize_range:
+                for prize in product_obj.prize_range:
+                    start = int(prize.get('from', 0) or 0)
+                    end = int(prize.get('to', 0) or 0)
+                    price = float(prize.get('rate', 0) or 0)
 
-                        if start <= product_count <= end:
-                            discount_to_apply = product_discount if product_discount else 0
-                            discounted_price = price * (1 - discount_to_apply)
-                            total_amount = product_count * discounted_price
-                            print("Total Amount for Product:", total_amount)
-                            break  
+                    print(f"Checking range: from {start} to {end}, prize: {price}")
 
-                # Append product details to cart_data
-                if product_obj:
-                    cart_data.append({
-                        "user_id": item.user_id,
-                        "username":invidual.username,
-                        "product_id":p_id,
-                        "total_count": product_count,
-                        "product_name": product_obj.product_name,
-                        "product_images": product_obj.product_images if product_obj.product_images else None,
-                        "product_description": product_obj.product_description,
-                        "product_discount": product_obj.product_discount,
-                        "individual_discount": individual_discount,
-                        "product_offer": product_obj.product_offer,
-                        "product_category": product_obj.product_category,
-                        "prize_range": product_obj.prize_range,
-                        "product_stock": product_obj.product_stock,
-                        "total_amount": total_amount,
-                    })
+                    if start <= product_count <= end:
+                        discount_to_apply = product_discount if product_discount else 0
+                        discounted_price = price * (1 - discount_to_apply)
+                        total_amount = product_count * discounted_price
+                        print("Total Amount for Product:", total_amount)
+                        break  
 
-                    sum_total = sum(item['total_amount'] for item in cart_data)
-                    print("Total before discount:", sum_total)
+            # Append product details to cart_data
+            if product_obj:
+                cart_data.append({
+                    "user_id": user_cart_items.user_id,
+                    "username":invidual.username,
+                    "product_id":p_id,
+                    "total_count": product_count,
+                    "product_name": product_obj.product_name,
+                    "product_images": product_obj.product_images if product_obj.product_images else None,
+                    "product_description": product_obj.product_description,
+                    "product_discount": product_obj.product_discount,
+                    "individual_discount": individual_discount,
+                    "product_offer": product_obj.product_offer,
+                    "product_category": product_obj.product_category,
+                    "prize_range": product_obj.prize_range,
+                    "product_stock": product_obj.product_stock,
+                    "total_amount": total_amount,
+                })
 
-                    discount_to_user = individual_discount if individual_discount else 0
-                    discount_amount = sum_total * discount_to_user  # Calculate discount amount
-                    final_price = sum_total - discount_amount  # Subtract discount from total
+                sum_total = sum(item['total_amount'] for item in cart_data)
+                print("Total before discount:", sum_total)
 
-                    response_data = {
-                        "cart_data": cart_data,
-                        "sum_total": sum_total,  # Total before discount
-                        "discount_amount": discount_amount,  # Discount applied
-                        "final_price": final_price  # Total after discount
-                    }
+                discount_to_user = individual_discount if individual_discount else 0
+                discount_amount = sum_total * discount_to_user  # Calculate discount amount
+                final_price = sum_total - discount_amount  # Subtract discount from total
 
-                    print("Discount applied:", discount_amount)
-                    print("Final total after discount:", final_price)
+                response_data = {
+                    "cart_data": cart_data,
+                    "sum_total": sum_total,  # Total before discount
+                    "discount_amount": discount_amount,  # Discount applied
+                    "final_price": final_price  # Total after discount
+                }
+
+                print("Discount applied:", discount_amount)
+                print("Final total after discount:", final_price)
                 
 
         if not cart_data:

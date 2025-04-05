@@ -128,17 +128,6 @@ class Cart_items(models.Model):
     @property
     def is_authenticated(self):
         return True
-    
-    def cart_add(self, products):
-        if not isinstance(products, list):  # Ensure it's a list of dicts
-            raise ValidationError("Products must be a list of dictionaries.")
-
-        # Ensure all elements in the list are dictionaries
-        if not all(isinstance(item, dict) for item in products):
-            raise ValidationError("Each product must be a dictionary.")
-
-        self.products.extend(products)  # Append new products
-        self.save() 
 
     def __str__(self):
         return self.user_id
