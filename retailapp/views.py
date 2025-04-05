@@ -987,7 +987,7 @@ class Category_filter(APIView):
                 return Response({"error": "Category not found"}, status=status.HTTP_404_NOT_FOUND)
 
 class Adding_cart(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         user_id = request.data.get('user_id')
@@ -1084,7 +1084,7 @@ class Adding_cart(APIView):
             print("Individual Discount:", individual_discount)
 
             # Get product discount
-            # product_discount = int(product_obj.product_discount)
+            # product_discount = int(product_obj.product_discount)                
             product_discount = float(product_obj.product_discount.strip().replace("%", "")) / 100 if product_obj and product_obj.product_discount else 0
             print("Product Discount:", product_discount)
 
@@ -1652,17 +1652,17 @@ class Total_counts_dashboard(APIView):
     permission_classes = [IsAuthenticated]
  
     def get(self,request):
-        active_customer_count = Customer.objects.filter(status=True).count()
+        active_customer_count = Customer.objects.filter(status=False).count()
         print("Active customers:", active_customer_count)
 
-        order_count = sum(len(order.product_items) for order in Order_products.objects.all() if isinstance(order.product_items, list))
-        print("Total product count in all orders:", order_count)
+        # order_count = sum(len(order.product_items) for order in Order_products.objects.all() if isinstance(order.product_items, list))
+        # print("Total product count in all orders:", order_count)
 
         response_data = {
             "total_products" : Product_list.objects.count(),
             "total_category" : Product_Category.objects.count(),
             "active_customer_count":active_customer_count,
-            "order_count":order_count
+            "order_count":Order_products.objects.count()
             }
         return Response(response_data)
 
