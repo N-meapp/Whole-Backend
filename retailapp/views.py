@@ -803,12 +803,12 @@ class Search_history(APIView):
 
     def post(self, request):
         # Check if the user is logged in
-        user_name = request.data.get("user_id")  # Assuming "author" stores the logged-in user's ID
-        print('user is',user_name)
-        if user_name:
+        user_id = request.data.get("user_id")  # Assuming "author" stores the logged-in user's ID
+        print('user is',user_id)
+        if user_id:
             try:
                 # Fetch the user from the database
-                user = Customer.objects.get(id=user_name)
+                user = Customer.objects.get(id=user_id)
             except Customer.DoesNotExist:
                 return Response({'message': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -823,24 +823,35 @@ class Search_history(APIView):
             print("the append data is",user)
             return Response(serializer.data, status=status.HTTP_200_OK)
         else:
-            return Response({'message': 'No active session found'}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response({'message': 'No user_id provided'}, status=status.HTTP_401_UNAUTHORIZED)
         
     
     def get(self, request):
-        user_name = request.query_params.get("user_id")  # Get the user ID from query params
+        user_id = request.query_params.get("user_id")  # Get the user ID from query params
         see_more = request.query_params.get("see_more", "false").lower() == "true"  # Check if 'see more' is clicked
 
-        print('get user is', user_name)
+        print('get user is', user_id)
         
-        if user_name:
+        if user_id:
             try:
                 # Fetch the user from the database
-                user = Customer.objects.get(id=user_name)
+                user = Customer.objects.get(id=user_id)
                 search_data = user.search_history  # ["Footwear", "Watches"]
                 print('the user search history:', search_data)
 
                 if not search_data:
-                    return Response({'message': 'Search history is empty'}, status=status.HTTP_204_NO_CONTENT)
+                    try:
+                        all_products = list(Product_list.objects.all())
+                    except Product_list.DoesNotExist:
+                        return Response({'error': 'Product_list DoesNotExist.'}, status=400)
+
+                    if len(all_products) >= 1:
+                        products_list = random.sample(all_products, k=1)
+                        serializer = ProductListSerializer(products_list, many=True)
+                        return Response(serializer.data, status=200)
+                    else:
+                        return Response({'error': 'Not enough products to sample from.'}, status=400)
+
 
                 # Fetch products that match search_data
                 matched_products = list(Product_list.objects.filter(product_category__in=search_data))
@@ -2174,56 +2185,69 @@ class Top_products(APIView):
 
     def get(self, request):
         orders_list = Order_products.objects.all()
-        print("Orders list count:", orders_list.count())
-        response_data = []
-        seen_products = set()
+        if orders_list:
+            print("Orders list count:", orders_list.count())
+            response_data = []
+            seen_products = set()
 
-        for orders in orders_list:
-            product_items = orders.product_items
-            print("Product items:", product_items)
+            for orders in orders_list:
+                product_items = orders.product_items
+                print("Product items:", product_items)
 
-            # Ensure product_items is a dictionary
-            if isinstance(product_items, str):
-                try:
-                    product_items = json.loads(product_items)
-                except json.JSONDecodeError as e:
-                    print("JSON Decode Error:", e, "| Product items:", product_items)
-                    continue
-
-            if not isinstance(product_items, dict):
-                continue  # Ensure product_items is a dictionary before proceeding
-
-            for items in product_items.get('products', []):
-                if not isinstance(items, dict):
-                    continue
-
-                if items.get('order_status') == 'accepted':
-                    product_id = items.get('product_id')
-                    print('The product id with status accepted:', product_id)
-
-                    if product_id in seen_products:
-                        continue
-
+                # Ensure product_items is a dictionary
+                if isinstance(product_items, str):
                     try:
-                        product_list = Product_list.objects.get(id=product_id)
-                    except Product_list.DoesNotExist:
+                        product_items = json.loads(product_items)
+                    except json.JSONDecodeError as e:
+                        print("JSON Decode Error:", e, "| Product items:", product_items)
                         continue
 
-                    seen_products.add(product_id)
+                if not isinstance(product_items, dict):
+                    continue  # Ensure product_items is a dictionary before proceeding
 
-                    response_data.append({
-                        'product_id': product_id,
-                        'product_name': product_list.product_name,
-                        'product_images': product_list.product_images if product_list.product_images else None,
-                        'product_description': product_list.product_description,
-                        'product_discount': product_list.product_discount if product_list.product_discount else None,
-                        'product_category': product_list.product_category,
-                        'prize_range': product_list.prize_range,
-                        'product_stock': product_list.product_stock,
-                        'order_status': items.get('order_status')
-                    })
+                for items in product_items.get('products', []):
+                    if not isinstance(items, dict):
+                        continue
 
-        return Response(response_data)
+                    if items.get('order_status') == 'accepted':
+                        product_id = items.get('product_id')
+                        print('The product id with status accepted:', product_id)
+
+                        if product_id in seen_products:
+                            continue
+
+                        try:
+                            product_list = Product_list.objects.get(id=product_id)
+                        except Product_list.DoesNotExist:
+                            continue
+
+                        seen_products.add(product_id)
+
+                        response_data.append({
+                            'product_id': product_id,
+                            'product_name': product_list.product_name,
+                            'product_images': product_list.product_images if product_list.product_images else None,
+                            'product_description': product_list.product_description,
+                            'product_discount': product_list.product_discount if product_list.product_discount else None,
+                            'product_category': product_list.product_category,
+                            'prize_range': product_list.prize_range,
+                            'product_stock': product_list.product_stock,
+                            'order_status': items.get('order_status')
+                        })
+
+            return Response(response_data)
+        else:
+            try:
+                all_products = list(Product_list.objects.all())
+            except Product_list.DoesNotExist:
+                return Response({'error': 'Product_list DoesNotExist.'}, status=400)
+
+            if len(all_products) >= 1:
+                products_list = random.sample(all_products, k=1)
+                serializer = ProductListSerializer(products_list, many=True)
+                return Response(serializer.data, status=200)
+            else:
+                return Response({'error': 'Not enough products to sample from.'}, status=400)
 
 
 
