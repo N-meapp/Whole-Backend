@@ -1006,12 +1006,16 @@ class Adding_cart(APIView):
             return Response({"error": "products must be a list or a product object"}, status=status.HTTP_400_BAD_REQUEST)
 
         # Retrieve the user's cart
-        cart = Cart_items.objects.get(user_id=user_id)
-        if not isinstance(cart.products, list):
-            cart.products = list(cart.products)
-        print("the cart items is",cart)
-        print("Type of cart.products:",cart.products)
+        try:
+            cart = Cart_items.objects.filter(user_id=user_id).first()
+        except Cart_items.DoesNotExist:
+            cart=None
+        
         if cart:
+            if not isinstance(cart.products, list):
+                cart.products = list(cart.products)
+                print("the cart items is",cart)
+                print("Type of cart.products:",cart.products)
             # Update the existing cart
             existing_products = {item["id"]: item for item in cart.products}  # Create a dictionary for quick lookup
             print('the existing_products',existing_products)
