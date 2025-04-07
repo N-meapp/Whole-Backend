@@ -129,7 +129,7 @@ class UserLoginView(APIView):
                 user = Administrator.objects.get(username=username)
                 user_type = "admin"
             except Administrator.DoesNotExist:
-                return Response({"error": "Invalid username or password"}, status=status.HTTP_401_UNAUTHORIZED)
+                return Response({"error": "Invalid username or password"}, status=status.HTTP_404_NOT_FOUND)
 
         # Check password
         if not check_password(password, user.password):
@@ -828,7 +828,7 @@ class Search_history(APIView):
             print("the append data is",user)
             return Response(serializer.data, status=status.HTTP_200_OK)
         else:
-            return Response({'message': 'No user_id provided'}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response({'message': 'No user_id provided'}, status=status.HTTP_404_NOT_FOUND)
         
     
     def get(self, request):
@@ -905,7 +905,7 @@ class Home(APIView):
 
 # profile update
 class Profile_update_custumer(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get(self, request, id):
         try:
@@ -2189,6 +2189,7 @@ class Top_products(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        see_more = request.query_params.get("see_more", "false").lower() == "true"  # Check if 'see more' is clicked
         orders_list = Order_products.objects.all()
         if orders_list:
             print("Orders list count:", orders_list.count())
@@ -2230,6 +2231,9 @@ class Top_products(APIView):
 
                         seen_products.add(product_id)
 
+                        if not see_more:
+                            product_list = product_list[:6]
+
                         response_data.append({
                             'product_id': product_id,
                             'product_name': product_list.product_name,
@@ -2242,8 +2246,7 @@ class Top_products(APIView):
                             'order_status': items.get('order_status')
                         })
                     
-            # return Response(response_data)
-        
+           
         if response_data:
             return Response(response_data)
 
@@ -2255,7 +2258,7 @@ class Top_products(APIView):
             return Response({'error': 'Product_list DoesNotExist.'}, status=400)
 
         if len(all_products) >= 1:
-            products_list = random.sample(all_products, k=1)
+            products_list = random.sample(all_products, k=6)
             serializer = ProductListSerializer(products_list, many=True)
             return Response(serializer.data, status=200)
         else:
