@@ -138,14 +138,19 @@ class UserLoginView(APIView):
         # Generate JWT tokens manually
         tokens = get_tokens_for_user(user)
 
-        return Response({
+        response_data = {
             "message": "Login successful",
             "access_token": tokens["access"],
             "refresh_token": tokens["refresh"],
             "user_id": user.id,
             "username": user.username,
             "user_type": user_type,
-        }, status=status.HTTP_200_OK)
+        }
+
+        if user_type == "customer":
+            response_data["profile_image"] = user.profile_image.url if user.profile_image else None
+
+        return Response(response_data, status=status.HTTP_200_OK)
 
 
 
@@ -2206,6 +2211,8 @@ class Top_products(APIView):
                     continue  # Ensure product_items is a dictionary before proceeding
 
                 for items in product_items.get('products', []):
+                    print("items:", items)
+
                     if not isinstance(items, dict):
                         continue
 
@@ -2234,22 +2241,25 @@ class Top_products(APIView):
                             'product_stock': product_list.product_stock,
                             'order_status': items.get('order_status')
                         })
-
+                    
+            # return Response(response_data)
+        
+        if response_data:
             return Response(response_data)
+
+        # Otherwise, return 1 random product
+        try:
+            all_products = list(Product_list.objects.all())
+            print('the product is', all_products)
+        except Product_list.DoesNotExist:
+            return Response({'error': 'Product_list DoesNotExist.'}, status=400)
+
+        if len(all_products) >= 1:
+            products_list = random.sample(all_products, k=1)
+            serializer = ProductListSerializer(products_list, many=True)
+            return Response(serializer.data, status=200)
         else:
-            try:
-                all_products = list(Product_list.objects.all())
-            except Product_list.DoesNotExist:
-                return Response({'error': 'Product_list DoesNotExist.'}, status=400)
-
-            if len(all_products) >= 1:
-                products_list = random.sample(all_products, k=1)
-                serializer = ProductListSerializer(products_list, many=True)
-                return Response(serializer.data, status=200)
-            else:
-                return Response({'error': 'Not enough products to sample from.'}, status=400)
-
-
+            return Response({'error': 'Not enough products to sample from.'}, status=400)
 
 
 class slider_Adds(APIView): 
