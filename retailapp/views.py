@@ -133,7 +133,7 @@ class UserLoginView(APIView):
 
         # Check password
         if not check_password(password, user.password):
-            return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response({"error": "Invalid credentials"}, status=400)
 
         # Generate JWT tokens manually
         tokens = get_tokens_for_user(user)
@@ -887,7 +887,7 @@ class Newly_arrived(APIView):
 
     def get(self, request):
         # Fetch the 5 most recently added products
-        products = Product_list.objects.order_by('-created_at')[:5]  # Ensure 'created_at' field exists in your model
+        products = Product_list.objects.order_by('-created_at')[:6]  # Ensure 'created_at' field exists in your model
 
         # Serialize the products
         serializer = ProductListSerializer(products, many=True)
@@ -983,6 +983,24 @@ class Profile_update_custumer(APIView):
             return Response({"message": "Customer deleted"}, status=200)
         else:
             return Response({"error": "Customer not found"}, status=400)
+        
+
+    def post(self, request, id):
+        try:
+            customer = Customer.objects.get(id=id)
+        except Customer.DoesNotExist:
+            return Response({"error": "Customer not found"}, status=400)
+
+        if customer.profile_image:
+            try:
+                cloudinary.uploader.destroy(customer.profile_image.public_id)
+                # Set image field to None (or default image if needed)
+                customer.profile_image = None  # or set to 'path/to/default/image' if default isn't applied automatically
+                customer.save()
+            except Exception as e:
+                return Response({"error": f"Failed to delete old image from Cloudinary: {str(e)}"}, status=500)
+
+        return Response({"message": "Profile image removed, default image set."}, status=200)
 
 
 # category filtering homescreen
@@ -2165,10 +2183,19 @@ class Enquiry_send(APIView):
             except Product_list.DoesNotExist:
                 print(f"Product with ID {product_id} not found.")
                 continue  # Skip this enquiry if the product does not exist
+            user = int(items.user_id)
+            try:
+                customer = Customer.objects.get(id=user)
+            except Customer.DoesNotExist:
+                print(f"Customer with ID {user} not found.")
+                continue
+
             print("The product list:", product)
 
             enquiry_list.append({
-                "username": items.user_id,
+                "user_id": user,
+                "username":customer.username,
+                "phone_number":customer.phone_number,
                 "product_name": product.product_name,
                 "product_image": product.product_images if product.product_images else None,  # Convert to URL string
                 "product_description": product.product_description,
@@ -2186,21 +2213,22 @@ class Enquiry_send(APIView):
 
 class Top_products(APIView):
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = []
 
     def get(self, request):
-        see_more = request.query_params.get("see_more", "false").lower() == "true"  # Check if 'see more' is clicked
+        see_more = request.query_params.get("see_more", "false").lower() == "true"
         orders_list = Order_products.objects.all()
-        if orders_list:
+        response_data = []
+        seen_products = set()
+
+        if orders_list.exists():
             print("Orders list count:", orders_list.count())
-            response_data = []
-            seen_products = set()
 
             for orders in orders_list:
                 product_items = orders.product_items
                 print("Product items:", product_items)
 
-                # Ensure product_items is a dictionary
+                # Parse JSON if product_items is a string
                 if isinstance(product_items, str):
                     try:
                         product_items = json.loads(product_items)
@@ -2209,7 +2237,7 @@ class Top_products(APIView):
                         continue
 
                 if not isinstance(product_items, dict):
-                    continue  # Ensure product_items is a dictionary before proceeding
+                    continue
 
                 for items in product_items.get('products', []):
                     print("items:", items)
@@ -2225,44 +2253,43 @@ class Top_products(APIView):
                             continue
 
                         try:
-                            product_list = Product_list.objects.get(id=product_id)
+                            product_obj = Product_list.objects.get(id=product_id)
                         except Product_list.DoesNotExist:
                             continue
 
                         seen_products.add(product_id)
 
-                        if not see_more:
-                            product_list = product_list[:6]
-
                         response_data.append({
                             'product_id': product_id,
-                            'product_name': product_list.product_name,
-                            'product_images': product_list.product_images if product_list.product_images else None,
-                            'product_description': product_list.product_description,
-                            'product_discount': product_list.product_discount if product_list.product_discount else None,
-                            'product_category': product_list.product_category,
-                            'prize_range': product_list.prize_range,
-                            'product_stock': product_list.product_stock,
+                            'product_name': product_obj.product_name,
+                            'product_images': product_obj.product_images if product_obj.product_images else None,
+                            'product_description': product_obj.product_description,
+                            'product_discount': product_obj.product_discount if product_obj.product_discount else None,
+                            'product_category': product_obj.product_category,
+                            'prize_range': product_obj.prize_range,
+                            'product_stock': product_obj.product_stock,
                             'order_status': items.get('order_status')
                         })
-                    
-           
-        if response_data:
-            return Response(response_data)
 
-        # Otherwise, return 1 random product
-        try:
-            all_products = list(Product_list.objects.all())
-            print('the product is', all_products)
-        except Product_list.DoesNotExist:
-            return Response({'error': 'Product_list DoesNotExist.'}, status=400)
+        # Apply 6-product limit only if see_more is False
+        if not see_more:
+            response_data = response_data[:6]
+        if not response_data :
+            try:
+                all_products = list(Product_list.objects.all())
+                print('the product is', all_products)
+            except Product_list.DoesNotExist:
+                return Response({'error': 'Product_list DoesNotExist.'}, status=400)
 
-        if len(all_products) >= 1:
-            products_list = random.sample(all_products, k=6)
-            serializer = ProductListSerializer(products_list, many=True)
-            return Response(serializer.data, status=200)
-        else:
-            return Response({'error': 'Not enough products to sample from.'}, status=400)
+            if len(all_products) >= 1:
+                products_list = random.sample(all_products, k=6)
+                serializer = ProductListSerializer(products_list, many=True)
+                return Response(serializer.data, status=200)
+            else:
+                return Response({'error': 'Not enough products to sample from.'}, status=400) 
+
+        return Response(response_data, status=status.HTTP_200_OK)
+        
 
 
 class slider_Adds(APIView): 
