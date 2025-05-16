@@ -1287,6 +1287,37 @@ class Delete_all_cart(APIView):
 class order_products(APIView):
     permission_classes = [IsAuthenticated]
 
+    # def post(self, request):
+    #     user_id = request.data.get('userid')
+    #     orders = request.data.get('orders')
+
+    #     print("Received user_id:", user_id)
+    #     print("Received products:", orders)
+
+    #     # Validate user_id and orders
+    #     if not user_id or not isinstance(orders, dict):
+    #         return Response({"error": "Invalid data format (user_id missing or orders is not a dict)"}, status=status.HTTP_400_BAD_REQUEST)
+
+    #     try:
+    #         # Create new order
+    #         order_products = Order_products.objects.create(user_id=user_id, product_items=orders)
+    #         serializer = OrderSerializer(order_products)
+
+    #         # Clear user's cart if it exists
+    #         cart = Cart_items.objects.filter(user_id=user_id).first()
+    #         if cart:
+    #             cart.delete()
+    #             print("Cart cleared for user:", user_id)
+    #             return Response({"message":"Order placed successfully and Cart cleared for user","order_details":serializer.data},status=200)
+    #         return Response({
+    #             "message": "Order placed successfully",
+    #             "order_details": serializer.data
+    #         }, status=status.HTTP_201_CREATED)
+
+    #     except Exception as e:
+    #         print(f"Error placing order: {e}")
+    #         return Response({"error": "Failed to place order"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
     def post(self, request):
         user_id = request.data.get('userid')
         orders = request.data.get('orders')
@@ -1303,12 +1334,59 @@ class order_products(APIView):
             order_products = Order_products.objects.create(user_id=user_id, product_items=orders)
             serializer = OrderSerializer(order_products)
 
+            user = Customer.objects.filter(id=user_id).first()
+            username = user.username if user else f"User ID: {user_id}"
+
+            message_body = f"New Order placed by user: {username}\nOrder Details:\n"
+
+            order_data = orders  # your full orders dict
+
+            # Format address nicely
+            address = order_data.get('address', {})
+            message_body += "Address:\n"
+            message_body += f"  House Name: {address.get('housename', '')}\n"
+            message_body += f"  Road Name: {address.get('roadname', '')}\n"
+            message_body += f"  Landmark: {address.get('landmark', '')}\n"
+            message_body += f"  District: {address.get('district', '')}\n"
+            message_body += f"  City: {address.get('city', '')}\n"
+            message_body += f"  State: {address.get('state', '')}\n"
+            message_body += f"  Postcode: {address.get('postcode', '')}\n\n"
+
+            # Other main order info
+            message_body += f"Order ID: {order_data.get('order_id', '')}\n"
+            message_body += f"Date: {order_data.get('date', '')}\n"
+            message_body += f"Final Amount: {order_data.get('final_amount', '')}\n\n"
+
+            # Products details (list of dicts)
+            products = order_data.get('products', [])
+            message_body += "Products:\n"
+            for i, product in enumerate(products, 1):
+                product_obj = Product_list.objects.filter(id=product.get('product_id')).first()
+                product_name = product_obj.product_name if product_obj else f"Product ID: {product.get('product_id')}"
+                
+                message_body += f"  Product {i}:\n"
+                message_body += f"    Product Name: {product_name}\n"
+                message_body += f"    Count: {product.get('count', '')}\n"
+                message_body += f"    Total Amount: {product.get('total_amount', '')}\n\n"
+                        # Now send this message_body via Twilio
+            try:
+                client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+                client.messages.create(
+                    from_='whatsapp:+14155238886',
+                    body=message_body,
+                    to='whatsapp:+918129106509'  # Admin WhatsApp number
+                )
+                print("WhatsApp message sent to admin.")
+            except Exception as e:
+                print(f"Error sending WhatsApp message: {e}")
+
             # Clear user's cart if it exists
             cart = Cart_items.objects.filter(user_id=user_id).first()
             if cart:
                 cart.delete()
                 print("Cart cleared for user:", user_id)
                 return Response({"message":"Order placed successfully and Cart cleared for user","order_details":serializer.data},status=200)
+
             return Response({
                 "message": "Order placed successfully",
                 "order_details": serializer.data
@@ -1317,7 +1395,6 @@ class order_products(APIView):
         except Exception as e:
             print(f"Error placing order: {e}")
             return Response({"error": "Failed to place order"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
 
 
     def get(self, request):
@@ -1413,6 +1490,7 @@ class order_products(APIView):
         if not final_list:
             return Response({"error": "No orders found"}, status=404)
         return Response(final_list)
+
 
 
 class UpdateOrderStatus(APIView):
@@ -1812,6 +1890,82 @@ class Update_customer_status(APIView):
 #         return Response(final_list, status=200)
 
 
+# class TotalOrdersList(APIView):
+#     permission_classes = [IsAuthenticated]
+
+#     def get(self, request):
+#         order_list = Order_products.objects.all()
+
+#         if not order_list:
+#             return Response({"error": "No orders found"}, status=404)
+
+#         final_list = []
+#         product_ids = set()
+
+#         # Collect product IDs from all orders
+#         for order in order_list:
+#             product_items = order.product_items
+#             products = product_items.get("products", [])    
+#             for data in products:
+#                 product_ids.add(data["product_id"])
+
+#         # Fetch product details in a dictionary for quick lookup
+#         product_dict = {
+#             str(product.id): {
+#                 "product_name": product.product_name,
+#                 "product_images": product.product_images if product.product_images else None,
+#                 "product_category": product.product_category,
+#                 "product_stock": product.product_stock,
+#             }
+#             for product in Product_list.objects.filter(id__in=product_ids)
+#         }
+
+#         # Process each order
+#         for order in order_list:
+#             userid = order.user_id
+#             try:
+#                 customer = Customer.objects.get(id=userid)
+#             except Customer.DoesNotExist:
+#                 return Response({'error': 'The customer does not exist'}, status=404)
+
+#             product_items = order.product_items  # Get order details
+            
+#             # Prepare order details
+#             orderd_list = {
+#                 "id": order.id,
+#                 "userid": order.user_id,
+#                 "username": customer.username,
+#                 "address": product_items.get("address"),
+#                 "order_id": product_items.get("order_id"),
+#                 "order_track": product_items.get("order_track"),
+#                 "date": product_items.get("date"),
+#                 "final_amount": product_items.get("final_amount"),
+#                 "profile_image": str(customer.profile_image.url) if customer.profile_image else None,
+#                 "order_products": []  # Order products will be inside order_details
+#             }
+
+#             # Fetch products in the order
+#             for product in product_items.get("products", []):
+#                 product_id = str(product.get("product_id"))
+#                 product_details = product_dict.get(product_id)
+
+#                 if product_details:
+#                     orderd_list["order_products"].append({
+#                         "product_id": product_id,
+#                         "product_name": product_details["product_name"],
+#                         "product_images": product_details["product_images"],
+#                         "product_category": product_details["product_category"],
+#                         "product_stock": product_details["product_stock"],
+#                         "order_status": product.get("order_status"),
+#                         "total_amount": product.get("total_amount"),
+#                         "count": product.get("count"),
+#                     })
+
+#             # Append the order with embedded order_products
+#             final_list.append({"order_details": orderd_list})
+
+#         return Response(final_list, status=200)
+
 class TotalOrdersList(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -1827,7 +1981,7 @@ class TotalOrdersList(APIView):
         # Collect product IDs from all orders
         for order in order_list:
             product_items = order.product_items
-            products = product_items.get("products", [])    
+            products = product_items.get("products", [])
             for data in products:
                 product_ids.add(data["product_id"])
 
@@ -1845,13 +1999,26 @@ class TotalOrdersList(APIView):
         # Process each order
         for order in order_list:
             userid = order.user_id
+
             try:
                 customer = Customer.objects.get(id=userid)
+
+                # Debugging: Print customer status
+                print(f"Processing order for customer: {customer.username}, status: {customer.status}")
+
+                # Check if the customer is active. If status is True, customer is inactive, so skip this order
+                if customer.status == True:  # If status is True, the customer is inactive/blocked
+                    print(f"Skipping order for inactive customer: {customer.username}")
+                    continue
+
             except Customer.DoesNotExist:
-                return Response({'error': 'The customer does not exist'}, status=404)
+                print(f"Deleting order for non-existing customer with user_id: {userid}")
+                # Delete the order if the customer doesn't exist
+                order.delete()
+                continue
 
             product_items = order.product_items  # Get order details
-            
+
             # Prepare order details
             orderd_list = {
                 "id": order.id,
@@ -1886,9 +2053,11 @@ class TotalOrdersList(APIView):
             # Append the order with embedded order_products
             final_list.append({"order_details": orderd_list})
 
-        return Response(final_list, status=200)
+        if not final_list:
+            print("No valid orders to return for the active customers.")
+            return Response({"message": "No valid orders found for active customers."}, status=200)
 
-            
+        return Response(final_list, status=200)  
 
 class Search_all_products(APIView):
     permission_classes = [IsAuthenticated]
@@ -2156,18 +2325,128 @@ class SearchOrders(APIView):
 
 
     
+# class Enquiry_send(APIView):
+#     permission_classes = [IsAuthenticated]
+
+#     def post(self, request):
+#         serializer = EnquirySerializer(data=request.data)
+#         if serializer.is_valid():
+#             serializer.save()
+#             return Response(serializer.data, status=201)  # Use 201 for resource creation
+#         else:
+#             return Response({"message": "Validation failed", "errors": serializer.errors}, status=400)  # Use 400 for bad request
+
+        
+#     def get(self, request):
+#         try:
+#             enquiry = Enquiry.objects.all()
+#         except Error:
+#             return Response({"error": "No enquiries found"}, status=status.HTTP_404_NOT_FOUND)
+#         enquiry_list = []
+
+#         for items in enquiry:
+#             product_id = int(items.product_id)
+#             print("The product ID is:", product_id)
+#             try:
+#                 product = Product_list.objects.get(id=product_id)
+#             except Product_list.DoesNotExist:
+#                 print(f"Product with ID {product_id} not found.")
+#                 continue  # Skip this enquiry if the product does not exist
+#             user = int(items.user_id)
+#             try:
+#                 customer = Customer.objects.get(id=user)
+#             except Customer.DoesNotExist:
+#                 print(f"Customer with ID {user} not found.")
+#                 continue
+
+#             print("The product list:", product)
+
+#             enquiry_list.append({
+#                 "user_id": user,
+#                 "username":customer.username,
+#                 "phone_number":customer.phone_number,
+#                 "product_name": product.product_name,
+#                 "product_image": product.product_images if product.product_images else None,  # Convert to URL string
+#                 "product_description": product.product_description,
+#                 "product_category": product.product_category,
+#                 "prize_range": product.prize_range,
+#                 "product_stock": product.product_stock,
+#                 "message": items.message
+#             })
+
+#         if enquiry_list:
+#             return Response(enquiry_list, status=status.HTTP_200_OK)
+#         else:
+#             return Response({"error": "No enquiries found"}, status=status.HTTP_404_NOT_FOUND)
+
+from django.views.decorators.csrf import csrf_exempt
+from django.http import HttpResponse
+from twilio.twiml.messaging_response import MessagingResponse
+
+@csrf_exempt
+def whatsapp_webhook(request):
+    if request.method == 'POST':
+        incoming_msg = request.POST.get('Body', '').strip()
+        from_number = request.POST.get('From', '')
+        
+        # You can add logic to reply or process the incoming message
+        response = MessagingResponse()
+        
+        if incoming_msg.lower() == 'hi':
+            response.message("Hello! How can I help you?")
+        else:
+            response.message("Thanks for your message: " + incoming_msg)
+        
+        return HttpResponse(str(response), content_type='application/xml')
+    else:
+        return HttpResponse("Only POST allowed", status=405)
+
+
+from twilio.rest import Client
+from django.conf import settings
+
 class Enquiry_send(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         serializer = EnquirySerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=201)  # Use 201 for resource creation
-        else:
-            return Response({"message": "Validation failed", "errors": serializer.errors}, status=400)  # Use 400 for bad request
+            enquiry = serializer.save()
 
+            # WhatsApp Message Logic
+            try:
+                client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+
+                customer = Customer.objects.get(id=enquiry.user_id)
+                product = Product_list.objects.get(id=enquiry.product_id)
+
+                message_body = (
+                    f" New enquiry received!\n\n"
+                    f" Customer: {customer.username}\n"
+                    f" Phone: {customer.phone_number}\n"
+                    f" Product: {product.product_name}\n"
+                    f" Message: {enquiry.message}"
+                )
+
+                # Send to business owner or admin WhatsApp (must be joined to sandbox)
+                client.messages.create(
+                    from_='whatsapp:+14155238886',  # Twilio Sandbox Number
+                    body=message_body,
+                    to='whatsapp:+918129106509'  # Must be pre-joined to the sandbox
+                )
+
+            except Exception as e:
+                print(f" Error sending WhatsApp message: {str(e)}")
+
+            return Response(serializer.data, status=201)
+        else:
+            return Response(
+                {"message": "Validation failed", "errors": serializer.errors}, 
+                status=400
+            )
         
+
+
     def get(self, request):
         try:
             enquiry = Enquiry.objects.all()
@@ -2209,6 +2488,7 @@ class Enquiry_send(APIView):
             return Response(enquiry_list, status=status.HTTP_200_OK)
         else:
             return Response({"error": "No enquiries found"}, status=status.HTTP_404_NOT_FOUND)
+
 
 
 class Top_products(APIView):
@@ -2282,7 +2562,7 @@ class Top_products(APIView):
                 return Response({'error': 'Product_list DoesNotExist.'}, status=400)
 
             if len(all_products) >= 1:
-                products_list = random.sample(all_products, k=6)
+                products_list = random.sample(all_products, k=len(all_products))
                 serializer = ProductListSerializer(products_list, many=True)
                 return Response(serializer.data, status=200)
             else:
